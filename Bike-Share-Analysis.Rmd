@@ -1,0 +1,246 @@
+---
+title: "Cyclistic Bike Share Analysis"
+author: "Sreekanth Kuncham"
+date: "2023-06-13"
+output: html_document
+---
+
+### Introduction
+
+This project is part of the Google Data Analysis Professional certificate. The scenario of the project is as follows:
+
+I'm a junior data analyst working in the marketing analyst team at Cyclistic, a bike-share company in Chicago. The director of marketing believes the company's future success depends on maximizing the number of annual memberships. Therefore, my team wants to understand how casual riders and annual members use Cyclistic bikes diﬀerently. From these insights, my team will design a new marketing strategy to convert casual riders into annual members. But ﬁrst, Cyclistic executives must approve my recommendations, so they must be backed up with compelling data insights and professional data visualizations.
+
+I'm going to follow the steps of the data analysis process: ask, prepare, process, analyze, share, and act, to complete this project.
+
+### Ask
+
+The main question to be answered is: How do annual members and casual riders use Cyclistic bikes diﬀerently?
+
+Business task : To determine the patterns between rides of members and casual riders by using the Cyclistic previous Year's rides.
+
+### Prepare
+
+I will be using the Cylistic's 2022 trip data downloaded from "<https://divvy-tripdata.s3.amazonaws.com/index.html>".
+
+I'm using the data from Jan - Dec for year 2022.
+
+*Installing & Loading required packages*
+
+```{r}
+#install.packages("tidyverse")
+#install.packages("ggplot2")
+#install.packages("data.table")
+#install.packages("dplyr")
+
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+library(data.table)
+```
+
+*Load data and combine months data together.*
+
+```{r}
+#trip_data <- fread("202201-divvy-tripdata.csv")
+#files <- c("202202-divvy-tripdata.csv", 
+#           "202203-divvy-tripdata.csv",
+#           "202204-divvy-tripdata.csv",
+#           "202205-divvy-tripdata.csv",
+#           "202206-divvy-tripdata.csv",
+#           "202207-divvy-tripdata.csv",
+#           "202208-divvy-tripdata.csv",
+#           "202209-divvy-tripdata.csv",
+#           "202210-divvy-tripdata.csv",
+#           "202211-divvy-tripdata.csv",
+#           "202212-divvy-tripdata.csv"
+#           )
+
+#for (i in 1:length(files)){
+#  print(i)
+#  month <- fread(files[i])
+#  trip_data <- rbind(trip_data, mon)
+#  rm(month)
+#}
+
+trip_data <- fread("2022_tripdata.csv")
+```
+
+### Process
+
+*Cleaning and Preparing data*
+
+```{r}
+str(trip_data) #to get list of columns and data types
+```
+
+```{r}
+head(trip_data) #to see first 6 rows
+```
+
+```{r}
+colnames(trip_data) #to get columns names
+```
+
+*Remove Unwanted columns* Let's remove the unwanted columns such that it is easy to analyse
+
+```{r}
+trip_data = subset(trip_data, select = -c(start_station_id, end_station_id, start_lat, start_lng, end_lat, end_lng))
+```
+
+```{r}
+summary(trip_data) #Let's see the Statistical summary of data
+```
+
+From the above summary we can see that there are no null values in the data set.
+
+*Converting dates into one single common format.*
+
+```{r}
+started_at <- as.POSIXct(trip_data$started_at)
+ended_at <- as.POSIXct(trip_data$ended_at)
+```
+
+*Adding a Column for ride duration.*
+
+```{r}
+ride_duration <- difftime(ended_at, started_at, units="mins")
+ride_duration <- data.frame(ride_duration)
+trip_data <- cbind(trip_data, ride_duration)
+```
+
+*Checking for negative values in ride duration, few contains start time greater than end time*
+
+```{r}
+clean_data <- trip_data %>% filter(ride_duration > 0)
+```
+
+*Checking for duplicate ride Id*
+
+```{r}
+sum(duplicated(clean_data$ride_id))
+```
+
+*Adding week day and month coulumns*
+
+```{r}
+weekday <- weekdays(clean_data$started_at)
+month_data <- month(clean_data$started_at)
+clean_data <- cbind(clean_data, weekday, month_data)
+```
+
+### Analyze
+
+*Compare members vs Casual users*
+
+```{r}
+clean_data %>% 
+  group_by(member_casual) %>% 
+  summarise(total_trips=n())%>%
+  mutate(percent = total_trips*100/sum(total_trips))
+```
+
+```{r}
+ggplot(data = clean_data, mapping = aes(x=member_casual,fill=member_casual)) + geom_bar()+labs(title="Member Vs Casual")
+```
+
+There are 44% more membership rides as compared to casual members rides.
+
+*Ride Analysis*
+
+```{r}
+cat("Average duration of rides is : ", mean(clean_data$ride_duration), "mins")
+```
+
+```{r}
+cat("Maximum ride duration is : ", round(max(clean_data$ride_duration)/60/24), "days")
+```
+
+```{r}
+cat("Minimum duration of ride is : ", min(clean_data$ride_duration)*60, "sec")
+```
+
+*Ride differences between members and casual riders*
+
+```{r}
+avg_ride_duration <- clean_data %>%
+  group_by(member_casual) %>%
+  summarise(avg_ride_length = mean(ride_duration))
+
+avg_ride_duration
+```
+
+```{r}
+ggplot(avg_ride_duration, aes(x=member_casual, y=avg_ride_length, fill=member_casual)) + geom_col() + labs(title="Members Vs Casual Riders")
+```
+
+*Comparing Bikes*
+
+```{r}
+clean_data %>%
+  group_by(rideable_type) %>%
+  summarise(rides=n()) %>%
+  mutate(percent=rides*100/sum(rides))
+```
+
+```{r}
+ggplot(clean_data, aes(x=rideable_type, fill=rideable_type)) + geom_bar() + labs(title="Type of Bikes used")
+```
+
+Overall there is more demand for electric bikes
+
+```{r}
+member_type <- clean_data%>%
+  group_by(member_casual, rideable_type)%>%
+  summarise(rides=n())%>%
+  mutate(percent=rides*100/sum(rides))
+
+member_type
+```
+
+```{r}
+ggplot(as.data.frame(member_type), aes(x=member_casual, y=rides, fill=rideable_type)) +
+  geom_bar(stat='identity') + labs(title="Choice of Bike by Riders")
+```
+
+*Usage of bikes on different days*
+
+```{r}
+clean_data$weekday <- factor(clean_data$weekday, levels=c("Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"))
+weektable <- clean_data %>%
+  group_by(member_casual,weekday)%>%
+  summarise(rides=n())%>%
+  mutate(percent=rides*100/sum(rides))
+weektable
+```
+
+```{r}
+ggplot(clean_data,aes(x=weekday, fill=member_casual)) + geom_bar() + facet_wrap(~member_casual)+theme(axis.text.x = element_text(angle=60, hjust=1)) + labs(title="Usage per day")
+```
+
+*Usage of bikes (Monthly)*
+
+```{r}
+month_table <- clean_data %>%
+  group_by(member_casual, month_data) %>%
+  summarise(rides=n()) %>%
+  mutate(percent = rides*100/sum(rides))
+month_table
+```
+
+```{r}
+ggplot(clean_data, aes(x=month_data, fill=member_casual)) + geom_bar() + facet_wrap(~member_casual) + labs(title="Usage per month")
+```
+
+### Findings
+
+-   About 60% rides are by members.
+-   Ride duration of Casual riders is much greater than members.
+-   Electric bikes are preferred more followed by classic bikes.
+-   Their is 50% increase in usage of bikes by casual riders in weekends especially on Saturday.
+-   Members usage is quite similar throughout the week days, a little drop is seen in weekends.
+-   Starting from March bike usage increases and peaks in July-August, and gradually decreases. Maybe due to weather conditions.
+
+### Suggestion
+
+-   Introduce special weekend membership plan, since most casual rides are happening in weekends.
